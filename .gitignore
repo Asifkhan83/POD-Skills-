@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Sample data outputs (keep structure, exclude generated files)
+sample_data/reports/*.xlsx
+sample_data/reports/email_drafts/
+sample_data/archive/
+sample_data/archive_by_customer/
+sample_data/archive_by_status/
