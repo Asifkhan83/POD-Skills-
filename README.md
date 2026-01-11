@@ -2,6 +2,14 @@
 
 A suite of 5 Python-based skills to automate Proof of Delivery (POD) management workflow. Designed for handling 200-500 PODs/day with Excel reports as output.
 
+## Demo Video
+
+[![POD Skills Demo](https://img.youtube.com/vi/8K_Lio18udA/maxresdefault.jpg)](https://www.youtube.com/watch?v=8K_Lio18udA)
+
+> Click the image above to watch the demo video
+
+---
+
 ## Quick Start
 
 ### Installation
