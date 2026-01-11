@@ -27,43 +27,44 @@ CUSTOMERS = [
 ]
 
 def create_manifest():
-    """Create sample manifest Excel."""
+    """Create sample manifest Excel with Invoice Numbers."""
 
-    # Generate 20 delivery IDs
-    delivery_ids = [
-        "9354302576",
-        "7104253522",
-        "2641500014",
-        "8825471039",
-        "5563920187",
-        "3347821456",
-        "6219045783",
-        "4478123690",
-        "7891234567",
-        "1234567890",
-        "9876543210",
-        "5555666677",
-        "1112223334",
-        "9998887776",
-        "4443332221",
-        "7776665554",
-        "2223334445",
-        "8889990001",
-        "6667778889",
-        "3334445556"
+    # Generate 20 entries with Invoice Numbers (primary) and Delivery IDs (fallback)
+    entries = [
+        {"invoice": "10001", "delivery": "9354302576"},
+        {"invoice": "10002", "delivery": "7104253522"},
+        {"invoice": "10003", "delivery": "2641500014"},
+        {"invoice": "10004", "delivery": "8825471039"},
+        {"invoice": "10005", "delivery": "5563920187"},
+        {"invoice": "10006", "delivery": "3347821456"},
+        {"invoice": "10007", "delivery": "6219045783"},
+        {"invoice": "10008", "delivery": "4478123690"},
+        {"invoice": "10009", "delivery": "7891234567"},
+        {"invoice": "10010", "delivery": "1234567890"},
+        {"invoice": "10011", "delivery": "9876543210"},
+        {"invoice": "10012", "delivery": "5555666677"},
+        {"invoice": "10013", "delivery": "1112223334"},
+        {"invoice": "10014", "delivery": "9998887776"},
+        {"invoice": "10015", "delivery": "4443332221"},
+        {"invoice": "10016", "delivery": "7776665554"},
+        {"invoice": "10017", "delivery": "2223334445"},
+        {"invoice": "10018", "delivery": "8889990001"},
+        {"invoice": "10019", "delivery": "6667778889"},
+        {"invoice": "10020", "delivery": "3334445556"}
     ]
 
     # Generate dates (last 7 days)
     base_date = datetime.now()
 
     data = []
-    for i, did in enumerate(delivery_ids):
+    for entry in entries:
         date = base_date - timedelta(days=random.randint(0, 6))
         customer = random.choice(CUSTOMERS)
         status = random.choice(["Delivered", "In Transit", "Pending"])
 
         data.append({
-            "Delivery ID": did,
+            "Invoice Number": entry["invoice"],
+            "Delivery ID": entry["delivery"],
             "Delivery Date": date.strftime("%Y-%m-%d"),
             "Customer Name": customer,
             "Status": status
@@ -73,9 +74,9 @@ def create_manifest():
     manifest_path = DATA_DIR / "manifest.xlsx"
     df.to_excel(manifest_path, index=False)
     print(f"Created manifest: {manifest_path}")
-    print(f"  - {len(df)} entries")
+    print(f"  - {len(df)} entries with Invoice Numbers")
 
-    return delivery_ids
+    return entries
 
 
 def create_sample_pdfs(delivery_ids):

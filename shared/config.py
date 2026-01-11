@@ -18,11 +18,16 @@ class PODConfig:
 
     # Excel column mappings (adjust to match your manifest)
     MANIFEST_COLUMNS = {
-        'delivery_id': 'Delivery ID',      # Column with delivery numbers
+        'invoice_number': 'Invoice Number', # Primary key - Invoice number
+        'delivery_id': 'Delivery ID',       # Secondary key - Delivery numbers
         'date': 'Delivery Date',            # Column with delivery date
         'customer': 'Customer Name',        # Column with customer name
         'status': 'Status',                 # Column with current status
     }
+
+    # Primary key for POD matching (invoice_number or delivery_id)
+    PRIMARY_KEY = 'invoice_number'
+    FALLBACK_KEY = 'delivery_id'
 
     # File patterns
     POD_FILE_EXTENSIONS = ['.pdf', '.PDF']
@@ -30,6 +35,11 @@ class PODConfig:
     # Validation settings
     DATE_TOLERANCE_DAYS = 2  # Allow +/- days for date matching
     CUSTOMER_MATCH_THRESHOLD = 80  # Fuzzy match percentage threshold
+
+    # OCR settings for content comparison
+    OCR_DPI = 300  # DPI for PDF to image conversion
+    OCR_LANGUAGE = 'eng'  # Tesseract language code
+    CONTENT_MATCH_THRESHOLD = 67  # Minimum % for "Partial" match (2/3 fields)
 
     def __init__(
         self,
@@ -75,10 +85,10 @@ class PODConfig:
         )
 
 
-def parse_delivery_id(filename: str) -> str:
+def parse_id_from_filename(filename: str) -> str:
     """
-    Extract delivery ID from filename.
-    Handles formats like: 9354302576.pdf, DEL_9354302576.pdf
+    Extract ID (invoice number or delivery ID) from filename.
+    Handles formats like: 12345.pdf, INV_12345.pdf, DEL_9354302576.pdf
     """
     # Remove extension
     name = Path(filename).stem
@@ -88,10 +98,17 @@ def parse_delivery_id(filename: str) -> str:
     numbers = re.findall(r'\d+', name)
 
     if numbers:
-        # Return the longest numeric sequence (usually the delivery ID)
+        # Return the longest numeric sequence (usually the ID)
         return max(numbers, key=len)
 
     return name
+
+
+def parse_delivery_id(filename: str) -> str:
+    """
+    Extract delivery ID from filename (alias for backward compatibility).
+    """
+    return parse_id_from_filename(filename)
 
 
 def format_date(date_value) -> str:

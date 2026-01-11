@@ -26,13 +26,81 @@ THIN_BORDER = Border(
 )
 
 
-def read_manifest(filepath: Path, columns: Dict[str, str]) -> pd.DataFrame:
+def find_header_row(filepath: Path, marker_column: str = 'Delivery ID') -> int:
+    """
+    Find the header row in an Excel file with summary sections.
+
+    Args:
+        filepath: Path to Excel file
+        marker_column: Column name to look for in header
+
+    Returns:
+        Row number where header is found (0-indexed), or 0 if not found
+    """
+    df_raw = pd.read_excel(filepath, header=None)
+
+    for i, row in df_raw.iterrows():
+        row_values = [str(v) for v in row.values if pd.notna(v)]
+        if marker_column in row_values:
+            return i
+
+    return 0
+
+
+def read_report_with_summary(filepath: Path, marker_column: str = 'Delivery ID') -> pd.DataFrame:
+    """
+    Read an Excel report that has a summary section before the data.
+
+    Args:
+        filepath: Path to Excel file
+        marker_column: Column name to identify the header row
+
+    Returns:
+        DataFrame with the data section only
+    """
+    header_row = find_header_row(filepath, marker_column)
+    return pd.read_excel(filepath, skiprows=header_row)
+
+
+def validate_manifest_columns(df: pd.DataFrame, required_columns: List[str]) -> Dict[str, str]:
+    """
+    Validate that required columns exist in DataFrame.
+
+    Args:
+        df: DataFrame to validate
+        required_columns: List of required column names
+
+    Returns:
+        Dict of validation issues (empty if all valid)
+    """
+    issues = {}
+    missing = [col for col in required_columns if col not in df.columns]
+
+    if missing:
+        issues['missing_columns'] = f"Missing required columns: {', '.join(missing)}"
+
+    # Check for empty delivery_id column
+    if 'delivery_id' in df.columns:
+        blank_count = df['delivery_id'].isna().sum() + (df['delivery_id'] == '').sum()
+        if blank_count > 0:
+            issues['blank_ids'] = f"Found {blank_count} blank delivery ID(s)"
+
+        # Check for duplicates
+        duplicates = df['delivery_id'].duplicated().sum()
+        if duplicates > 0:
+            issues['duplicate_ids'] = f"Found {duplicates} duplicate delivery ID(s) in manifest"
+
+    return issues
+
+
+def read_manifest(filepath: Path, columns: Dict[str, str], validate: bool = True) -> pd.DataFrame:
     """
     Read manifest Excel file and standardize column names.
 
     Args:
         filepath: Path to manifest Excel file
         columns: Mapping of standard names to actual column names
+        validate: Whether to validate and warn about issues
 
     Returns:
         DataFrame with standardized columns
@@ -46,6 +114,12 @@ def read_manifest(filepath: Path, columns: Dict[str, str]) -> pd.DataFrame:
     # Ensure delivery_id is string
     if 'delivery_id' in df.columns:
         df['delivery_id'] = df['delivery_id'].astype(str).str.strip()
+
+    # Validate if requested
+    if validate:
+        issues = validate_manifest_columns(df, ['delivery_id'])
+        for issue_type, message in issues.items():
+            print(f"Warning: {message}")
 
     return df
 

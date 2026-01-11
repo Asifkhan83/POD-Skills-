@@ -17,7 +17,7 @@ import pandas as pd
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from shared.config import PODConfig
-from shared.excel_utils import write_report
+from shared.excel_utils import write_report, read_manifest, read_report_with_summary
 
 
 # Email templates
@@ -114,16 +114,8 @@ def load_issues_report(report_path: Path) -> pd.DataFrame:
     Returns:
         DataFrame with issues
     """
-    # Find the header row dynamically
-    df_raw = pd.read_excel(report_path, header=None)
-    header_row = 0
-    for i, row in df_raw.iterrows():
-        if 'Delivery ID' in str(row.values):
-            header_row = i
-            break
-
-    df = pd.read_excel(report_path, skiprows=header_row)
-    return df
+    # Use shared utility to find header and read data
+    return read_report_with_summary(report_path, 'Delivery ID')
 
 
 def load_contacts(contacts_path: Path) -> Dict[str, Dict]:
@@ -169,15 +161,36 @@ def group_issues_by_business(
     """
     grouped = defaultdict(list)
 
+    # Build manifest lookup if available
+    manifest_lookup = {}
+    if manifest_df is not None and not manifest_df.empty:
+        for _, row in manifest_df.iterrows():
+            delivery_id = str(row.get('delivery_id', '')).strip()
+            customer = str(row.get('customer', '')).strip()
+            if delivery_id and customer:
+                manifest_lookup[delivery_id] = customer
+
     for _, row in issues_df.iterrows():
-        # Try to get business from manifest or use default
+        delivery_id = str(row.get('Delivery ID', '')).strip()
+
+        # Try to get business from:
+        # 1. Issues report Customer column (if exists)
+        # 2. Manifest lookup
+        # 3. Default to "Unknown Business"
         business = "Unknown Business"
 
-        # For now, group all under one business if no manifest
-        # In production, you'd look up the customer from manifest
+        # Check if issues report has Customer/Business column
+        for col in ['Customer', 'Business', 'Customer Name', 'Business Name']:
+            if col in row.index and pd.notna(row.get(col)):
+                business = str(row.get(col)).strip()
+                break
+
+        # If still unknown, try manifest lookup
+        if business == "Unknown Business" and delivery_id in manifest_lookup:
+            business = manifest_lookup[delivery_id]
 
         grouped[business].append({
-            'delivery_id': row.get('Delivery ID', ''),
+            'delivery_id': delivery_id,
             'issue_type': row.get('Issue Type', ''),
             'severity': row.get('Severity', ''),
             'details': row.get('Details', ''),
@@ -315,6 +328,7 @@ def generate_email(
 def run_pod_email(
     issues_report: str,
     contacts_path: str = None,
+    manifest_path: str = None,
     template: str = 'quality',
     output_folder: str = None,
     group_by: str = 'by-business'
@@ -325,6 +339,7 @@ def run_pod_email(
     Args:
         issues_report: Path to issues report
         contacts_path: Path to contacts Excel
+        manifest_path: Path to manifest Excel (for customer lookup)
         template: Template name
         output_folder: Path for email drafts
         group_by: Grouping mode
@@ -348,6 +363,22 @@ def run_pod_email(
     issues_df = load_issues_report(issues_path)
     print(f"Found {len(issues_df)} issues")
 
+    # Load manifest for customer lookup
+    manifest_df = None
+    if manifest_path:
+        manifest_file = Path(manifest_path)
+        if manifest_file.exists():
+            print(f"Loading manifest from: {manifest_file}")
+            manifest_df = read_manifest(manifest_file, PODConfig.MANIFEST_COLUMNS)
+            print(f"Found {len(manifest_df)} manifest entries")
+    else:
+        # Try default manifest path
+        default_manifest = Path(PODConfig.DEFAULT_MANIFEST_PATH)
+        if default_manifest.exists():
+            print(f"Loading manifest from default: {default_manifest}")
+            manifest_df = read_manifest(default_manifest, PODConfig.MANIFEST_COLUMNS)
+            print(f"Found {len(manifest_df)} manifest entries")
+
     # Load contacts
     contacts = {}
     if contacts_path:
@@ -358,7 +389,7 @@ def run_pod_email(
     # Group issues
     print("Grouping issues...")
     if group_by == 'by-business':
-        grouped = group_issues_by_business(issues_df)
+        grouped = group_issues_by_business(issues_df, manifest_df)
     else:
         grouped = group_issues_by_type(issues_df)
 
@@ -456,6 +487,10 @@ def main():
         help='Path to business contacts Excel'
     )
     parser.add_argument(
+        '--manifest', '-m',
+        help='Path to manifest Excel (for customer lookup)'
+    )
+    parser.add_argument(
         '--template', '-t',
         choices=['missing', 'quality', 'resolution', 'summary'],
         default='quality',
@@ -477,6 +512,7 @@ def main():
     run_pod_email(
         issues_report=args.issues_report,
         contacts_path=args.contacts,
+        manifest_path=args.manifest,
         template=args.template,
         output_folder=args.output,
         group_by=args.group_by

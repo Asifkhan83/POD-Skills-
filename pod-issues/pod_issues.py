@@ -211,13 +211,14 @@ def check_customer_match(
     }
 
 
-def check_stamp_presence(pdf_path: Path) -> Optional[Dict]:
+def check_stamp_presence(pdf_path: Path, pdf_text: str = None) -> Optional[Dict]:
     """
-    Basic check for stamp/signature presence.
-    Uses heuristics based on PDF content.
+    Enhanced check for stamp/signature presence.
+    Uses multiple heuristics: signature keywords, image analysis, and position.
 
     Args:
         pdf_path: Path to PDF file
+        pdf_text: Pre-extracted PDF text (optional)
 
     Returns:
         Issue dict if stamp appears missing, None otherwise
@@ -225,23 +226,69 @@ def check_stamp_presence(pdf_path: Path) -> Optional[Dict]:
     if not HAS_PDFPLUMBER:
         return None
 
+    # Signature-related keywords to look for in text
+    SIGNATURE_KEYWORDS = [
+        'signature', 'signed', 'received by', 'receiver', 'sign here',
+        'acknowledged', 'confirmed', 'delivered to', 'accepted by',
+        'recipient', 'signatory', 'authorized', 'stamp', 'seal'
+    ]
+
     try:
         with pdfplumber.open(pdf_path) as pdf:
-            # Check for images (stamps are often images)
-            has_images = False
+            has_signature_indicator = False
+            has_valid_stamp_image = False
+
             for page in pdf.pages:
+                page_height = page.height
+                page_width = page.width
+
+                # Check for signature-related images in bottom 40% of page
                 if page.images:
-                    has_images = True
+                    for img in page.images:
+                        img_top = img.get('top', 0)
+                        img_width = img.get('width', 0)
+                        img_height = img.get('height', 0)
+
+                        # Image is in bottom portion of page
+                        is_in_signature_area = img_top > (page_height * 0.5)
+
+                        # Image is reasonably sized (not tiny icons or huge backgrounds)
+                        min_size = 20
+                        max_size = page_width * 0.8
+                        is_valid_size = (
+                            img_width > min_size and img_height > min_size and
+                            img_width < max_size and img_height < max_size
+                        )
+
+                        if is_in_signature_area and is_valid_size:
+                            has_valid_stamp_image = True
+                            break
+
+                if has_valid_stamp_image:
                     break
 
-            if not has_images:
-                return {
-                    'type': 'Stamp Check',
-                    'severity': 'Low',
-                    'details': 'No images/stamps detected in PDF',
-                    'manifest_value': 'Expected stamp',
-                    'pdf_value': 'No images found'
-                }
+            # Check text for signature keywords
+            text_to_check = pdf_text or extract_pdf_text(pdf_path)
+            text_lower = text_to_check.lower()
+
+            for keyword in SIGNATURE_KEYWORDS:
+                if keyword in text_lower:
+                    has_signature_indicator = True
+                    break
+
+            # Determine if signature/stamp is likely present
+            # Valid if: has signature image OR has signature keywords in text
+            if has_valid_stamp_image or has_signature_indicator:
+                return None  # Signature/stamp likely present
+
+            # Only report as issue if neither indicator is found
+            return {
+                'type': 'Stamp Check',
+                'severity': 'Low',
+                'details': 'No signature/stamp indicators found (no images in signature area, no signature keywords)',
+                'manifest_value': 'Expected stamp/signature',
+                'pdf_value': 'Not detected'
+            }
 
     except Exception as e:
         return {
@@ -302,8 +349,8 @@ def analyze_pod(
         customer_issue['delivery_id'] = delivery_id
         issues.append(customer_issue)
 
-    # Check stamp
-    stamp_issue = check_stamp_presence(pdf_path)
+    # Check stamp (pass pdf_text to avoid re-reading)
+    stamp_issue = check_stamp_presence(pdf_path, pdf_text)
     if stamp_issue:
         stamp_issue['delivery_id'] = delivery_id
         issues.append(stamp_issue)
